@@ -1,6 +1,3 @@
-# Busylight MQTT client for Kuando busylights
-# <tec att sixtopia.net>
-
 import time
 import hid
 import threading
@@ -25,14 +22,12 @@ COLORS = {
     "white": (255, 255, 255),
 }
 
-
 def find_busylight():
     """Find the Kuando Busylight device."""
-    devices = hid.enumerate(VENDOR_ID, PRODUCT_ID)
-    if devices:
-        return devices[0]['path']
+    for device_info in hid.enumerate(VENDOR_ID, PRODUCT_ID):
+        if device_info["interface_number"] == 1:
+            return device_info["path"]
     return None
-
 
 def set_color(color):
     """Set the color of the Kuando Busylight."""
@@ -42,26 +37,22 @@ def set_color(color):
         return
 
     try:
-        with hid.device() as busylight:
-            busylight.open_path(device_path)
-            color_bytes = bytes([0x01, 0x4D, 0x08]) + bytes(color)
+        with hid.Device(path=device_path) as busylight:
+            color_bytes = SET_COLOR_COMMAND + bytes(color)
             busylight.write(color_bytes)
             print(f"Color set to {color}")
     except IOError as e:
         print(f"Error communicating with Kuando Busylight: {e}")
 
-
 def turn_off():
     """Turn off the Kuando Busylight."""
     set_color((0, 0, 0))
-
 
 def blink(color, duration=1):
     """Blink the Kuando Busylight with the specified color."""
     set_color(color)
     time.sleep(duration)
     turn_off()
-
 
 def usb_event_handler(added, device):
     """Handle USB device events."""
@@ -70,16 +61,15 @@ def usb_event_handler(added, device):
     else:
         print(f"Device removed: {device.product_name}")
 
-
 def monitor_usb_events():
     """Monitor USB events to detect addition or removal of Busylight."""
-    import pywinusb.hid as hid
-
-    filter = hid.HidDeviceFilter(vendor_id=VENDOR_ID, product_id=PRODUCT_ID)
-    filter.register(on_hid_events=usb_event_handler)
     while True:
-        hid.HidThread.run()
-
+        devices = hid.enumerate(VENDOR_ID, PRODUCT_ID)
+        if devices:
+            usb_event_handler(True, devices[0])
+        else:
+            usb_event_handler(False, None)
+        time.sleep(1)
 
 def main():
     # Start USB event monitoring in a separate thread
@@ -103,7 +93,6 @@ def main():
     # Turn off the light
     print("Turning off the light...")
     turn_off()
-
 
 if __name__ == "__main__":
     main()
