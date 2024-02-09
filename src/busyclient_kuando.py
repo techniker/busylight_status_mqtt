@@ -1,6 +1,7 @@
 import time
 import hid
 import threading
+import paho.mqtt.client as mqtt
 
 # Kuando Busylight Vendor ID and Product ID
 VENDOR_ID = 0x27BB
@@ -48,33 +49,32 @@ def turn_off():
     """Turn off the Kuando Busylight."""
     set_color((0, 0, 0))
 
-def blink(color, duration=1):
-    """Blink the Kuando Busylight with the specified color."""
-    set_color(color)
-    time.sleep(duration)
-    turn_off()
+def on_message(client, userdata, message):
+    """Callback function for handling MQTT messages."""
+    topic = message.topic
+    payload = message.payload.decode('utf-8')
 
-def usb_event_handler(added, device):
-    """Handle USB device events."""
-    if added:
-        print(f"Device added: {device.product_name}")
-    else:
-        print(f"Device removed: {device.product_name}")
+    print(f"Received message: {payload} on topic: {topic}")
 
-def monitor_usb_events():
-    """Monitor USB events to detect addition or removal of Busylight."""
-    while True:
-        devices = hid.enumerate(VENDOR_ID, PRODUCT_ID)
-        if devices:
-            usb_event_handler(True, devices[0])
+    if topic == "busylight/color":
+        if payload in COLORS:
+            set_color(COLORS[payload])
         else:
-            usb_event_handler(False, None)
-        time.sleep(1)
+            print("Invalid color specified.")
+    elif topic == "busylight/off":
+        turn_off()
+    else:
+        print("Unknown topic.")
 
 def main():
-    # Start USB event monitoring in a separate thread
-    usb_thread = threading.Thread(target=monitor_usb_events, daemon=True)
-    usb_thread.start()
+    # Start MQTT client
+    client = mqtt.Client()
+    client.username_pw_set(username="username", password="password")
+    client.on_message = on_message
+    client.connect("localhost", 1883, 60)
+    client.subscribe("busylight01/#")
+    mqtt_thread = threading.Thread(target=client.loop_forever)
+    mqtt_thread.start()
 
     # Test all colors
     print("Testing all colors...")
@@ -87,8 +87,10 @@ def main():
     print("Testing blink...")
     for _ in range(3):
         print("Blinking...")
-        blink(COLORS["red"], duration=1)
-        time.sleep(2)
+        set_color(COLORS["red"])
+        time.sleep(1)
+        turn_off()
+        time.sleep(1)
 
     # Turn off the light
     print("Turning off the light...")
